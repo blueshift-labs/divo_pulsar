@@ -26,8 +26,15 @@ defmodule DivoPulsar do
     image_version = Keyword.get(envars, :version, "latest")
     api_port = Keyword.get(envars, :port, 8080)
     ui_port = Keyword.get(envars, :ui_port)
+    start_period = Keyword.get(envars, :start_period, "60s")
+    timeout = Keyword.get(envars, :timeout, "30s")
+    interval = Keyword.get(envars, :interval, "5s")
 
     pulsar_ports = ["6650:6650", exposed_ports(api_port, 8080)]
+
+    healthcheck =
+      healthcheck(envars)
+      |> Enum.join(" ; ")
 
     pulsar_service = %{
       pulsar: %{
@@ -37,11 +44,12 @@ defmodule DivoPulsar do
         healthcheck: %{
           test: [
             "CMD-SHELL",
-            "curl -I http://localhost:8080/admin/v2/namespaces/public/default | grep '200' || exit 1"
+            healthcheck
           ],
-          interval: "5s",
-          timeout: "10s",
-          retries: 3
+          interval: interval,
+          timeout: timeout,
+          retries: 10,
+          start_period: start_period
         }
       }
     }
@@ -66,5 +74,22 @@ defmodule DivoPulsar do
 
   defp exposed_ports(external_port, internal_port) do
     to_string(external_port) <> ":" <> to_string(internal_port)
+  end
+
+  defp healthcheck(envars) do
+    with {:ok, tenant} <- Keyword.fetch(envars, :tenant),
+         {:ok, namespace} <- Keyword.fetch(envars, :namespace),
+         {:ok, topics} <- Keyword.fetch(envars, :topics) do
+      ["bin/pulsar-admin tenants create #{tenant}"] ++
+        ["bin/pulsar-admin namespaces create #{tenant}/#{namespace}"] ++
+        (topics
+         |> Enum.map(
+           &["bin/pulsar-admin topics create persistent://#{tenant}/#{namespace}/#{&1}"]
+         )) ++
+        ["bin/pulsar-admin topics list #{tenant}/#{namespace}"]
+    else
+      _ ->
+        ["bin/pulsar-admin tenants list"]
+    end
   end
 end
