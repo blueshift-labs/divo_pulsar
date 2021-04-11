@@ -29,6 +29,7 @@ defmodule DivoPulsar do
     start_period = Keyword.get(envars, :start_period, "60s")
     timeout = Keyword.get(envars, :timeout, "30s")
     interval = Keyword.get(envars, :interval, "5s")
+    environment = Keyword.get(envars, :environment, [])
 
     pulsar_ports = ["6650:6650", exposed_ports(api_port, 8080)]
 
@@ -40,7 +41,12 @@ defmodule DivoPulsar do
       pulsar: %{
         image: "apachepulsar/pulsar:#{image_version}",
         ports: pulsar_ports,
-        command: ["bin/pulsar", "standalone"],
+        command: [
+          "/bin/bash",
+          "-c",
+          "bin/apply-config-from-env.py ../../pulsar/conf/standalone.conf && bin/pulsar standalone"
+        ],
+        environment: environment,
         healthcheck: %{
           test: [
             "CMD-SHELL",
